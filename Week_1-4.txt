@@ -1,0 +1,140 @@
+//Week 1 
+// 1. total values by bank 
+SELECT 
+SPLIT_PART(transaction_code,'-',1) as bank,
+sum(value) as total_value,
+FROM pd2023_wk01
+group by bank;
+
+
+-- 2. Total Values by Bank, Day of the Week and Type of Transaction (Online or In-Person)
+SELECT
+SPLIT_PART(transaction_code,'-',1) as bank,
+CASE 
+WHEN online_or_in_person=1 THEN 'Online'
+WHEN online_or_in_person=2 THEN 'In-Person'
+END as online_in_person,
+DAYNAME(DATE(transaction_date,'dd/MM/yyyy hh24:mi:ss')) as day_of_week,
+sum(value) as total_values,
+FROM pd2023_wk01
+group by 1,2,3;
+
+
+-- 3. Total Values by Bank and Customer Code
+SELECT
+SPLIT_PART(transaction_code,'-',1) as bank,
+sum(value) as total_values,
+customer_code,
+FROM pd2023_wk01
+group by customer_code, bank;
+
+// Week 2
+
+select 
+replace(sort_code, '-', '') as Sort,
+check_digits,
+swift_code,
+account_number,
+'GB' as country_code,
+concat(country_code,check_digits,swift_code,Sort,account_number) as IBAN
+from pd2023_wk02_transactions t
+inner join pd2023_wk02_swift_codes sc
+    on sc.bank = t.bank;
+
+// Preppin Data 2023 Week 3 
+
+with CTE as (
+select
+case
+when online_or_in_person = 1 then 'Online' 
+else 'In-person'
+end as channel,
+quarter(to_date(left(transaction_date,10), 'DD/MM/YYYY'))as quarter,
+SUM(VALUE) as total_value
+from pd2023_wk01
+where left(TRANSACTION_CODE,3) = 'DSB'
+group by quarter, channel)
+select online_or_in_person, target,
+replace(t.quarter,'Q','') :: int as quarter,
+total_value - target as variance_from_target
+from pd2023_wk03_targets as t
+unpivot(target for quarter in (q1,q2,q3,q4))
+inner join 
+cte as c 
+on replace(t.quarter,'Q','') :: int = c.quarter AND c.channel = t.online_or_in_person ;
+
+
+//Preppin data 2023 wk 4 
+-- first step is to make a CTE where all of the tables are unioned 
+with CTE as (select * , 'pd2023_wk04_january' as tablename from pd2023_wk04_january
+
+union all
+
+select * , 'pd2023_wk04_february' as tablename from pd2023_wk04_february
+union all
+
+select * , 'pd2023_wk04_march' as tablename from pd2023_wk04_march
+union all
+
+select * , 'pd2023_wk04_april' as tablename from pd2023_wk04_april
+union all
+
+select *, 'pd2023_wk04_may' as tablename  from pd2023_wk04_may
+union all
+
+select * , 'pd2023_wk04_june' as tablename from pd2023_wk04_june
+union all
+
+select * , 'pd2023_wk04_july' as tablename  from pd2023_wk04_july
+union all
+
+select *, 'pd2023_wk04_august' as tablename  from pd2023_wk04_august
+union all
+
+select *, 'pd2023_wk04_september' as tablename from pd2023_wk04_september
+union all
+
+select * , 'pd2023_wk04_october' as tablename from pd2023_wk04_october
+union all
+
+select * , 'pd2023_wk04_november' as tablename from pd2023_wk04_november
+union all
+
+select * , 'pd2023_wk04_december' as tablename from pd2023_wk04_december)
+
+
+// next step is to make a cte of the table before the pivot so it needs ot include the columns you want in the ifnal table, this cte will pull columns form the union cte 
+
+, PRE_PIVOT AS(
+SELECT ID, 
+DEMOGRAPHIC,
+value,
+concat(to_varchar(joining_day),'/', SPLIT_PART(to_date(split_part(tablename,'_',3),'MMMM'),'-',2), '/','2023')as Joining_Date,
+from cte
+)
+
+// pull the columns from the pre pivot cte after the pivot is done  
+, Post_pivot as(
+select 
+ID, 
+to_date(Joining_Date,'DD/MM/YYYY') as Joining_date,
+ Ethnicity,
+account_type,
+to_date(date_of_birth, 'MM/DD/YYYY') as date_of_birth,
+row_number() over (partition by id order by joining_date asc) as rn
+from PRE_PIVOT
+// do the pivot first then read above 
+pivot(max(value) for demographic in ('Ethnicity', 'Account Type','Date of Birth')) as P 
+ //we need to tell snowflake what the naems of the columns will be and in what order
+ (
+  ID,
+  Joining_Date,
+  ethnicity,
+  account_type,
+  date_of_birth
+)
+)
+
+select ID, Joining_date, ethnicity,account_type,date_of_birth from post_pivot 
+where rn =1
+;
