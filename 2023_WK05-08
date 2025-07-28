@@ -1,0 +1,201 @@
+-- Week 5 
+with CTE as (
+select 
+split_part(transaction_code,'-',1)  as BANK,
+month(to_timestamp(transaction_date,'DD/MM/YYYY HH24:MI:SS')) as "MONTH",
+sum(value) as TOTAL_VALUE,
+rank() over( partition by "MONTH" order by TOTAL_VALUE desc) as "RANK"
+from pd2023_wk01
+group by BANK, "MONTH"),
+ 
+CTE2 AS (
+select BANK, 
+AVG("RANK") as "AVG RANK per Bank"
+FROM CTE
+GROUP BY BANK),
+
+CTE3 AS(
+select "RANK",
+avg(total_value) as "Avg Transaction Value per Rank"
+from CTE
+group by "RANK")
+
+select CTE.*, "Avg Transaction Value per Rank", "AVG RANK per Bank"
+from CTE 
+inner join CTE2 ON CTE2.BANK = CTE.BANK 
+inner join CTE3 on CTE3."RANK" = CTE."RANK";
+
+-- Week 6
+
+WITH PLATFORM AS(select customer_id, 
+concat(MOBILE_APP___EASE_OF_USE,',',ONLINE_INTERFACE___EASE_OF_USE) as Use,
+concat(MOBILE_APP___EASE_OF_ACCESS,',',ONLINE_INTERFACE___EASE_OF_ACCESS) as Access,
+concat(MOBILE_APP___LIKELIHOOD_TO_RECOMMEND,',',ONLINE_INTERFACE___LIKELIHOOD_TO_RECOMMEND) as Recommend,
+concat(MOBILE_APP___NAVIGATION,',',ONLINE_INTERFACE___NAVIGATION) as NAVIGATION,
+concat(MOBILE_APP___OVERALL_RATING,',',ONLINE_INTERFACE___OVERALL_RATING) as RATING 
+from pd2023_wk06_dsb_customer_survey),
+
+PIVOTED AS(select customer_id, 
+QUESTIONS, 
+SPLIT_PART(ANSWERS,',', 1) AS MOBILE, 
+SPLIT_PART(ANSWERS,',',2) AS ONLINE
+from PLATFORM
+unpivot(Answers for Questions in (USE,ACCESS, NAVIGATION, RECOMMEND, RATING))
+where QUESTIONS != 'RATING'),
+
+customer_categories as (select avg(mobile) as MOBILE_AVG,
+AVG(ONLINE) AS ONLINE_AVG,
+MOBILE_AVG - ONLINE_AVG AS AVG_DIFF,
+CASE
+    WHEN AVG_DIFF >= 2 THEN 'Mobile App Superfan'
+    when AVG_DIFF >= 1 THEN 'Mobile App Fan'
+    when AVG_DIFF > -1 THEN 'Neutral'
+    when AVG_DIFF >= -2 THEN 'Online Fan'
+    else 'Online Superfan' end as CATEGORY,
+CUSTOMER_ID
+FROM PIVOTED
+GROUP BY CUSTOMER_ID)
+
+select 
+round((count(customer_id)/(select count(*) from customer_categories))*100,1) as percent_of_customers
+,CATEGORY
+from 
+customer_categories
+group by CATEGORY;
+
+--WEEK 7 
+with transactions as (SELECT ACCOUNT_FROM AS "ACCOUNT FROM",
+ACCOUNT_TO AS "ACCOUNT TO", TRANSACTION_ID
+FROM PD2023_WK07_TRANSACTION_PATH),
+
+accounts as(
+select ACCOUNT_NUMBER,
+ACCOUNT_TYPE,
+BALANCE_DATE,
+BALANCE,
+value as ACCOUNT_HOLDER_ID
+from pd2023_wk07_account_information, 
+LATERAL SPLIT_TO_TABLE(account_holder_id,', ')
+where account_holder_id is not null
+),
+
+holders as(
+select date_of_birth,first_line_of_address,account_holder_id,name
+, concat('0',TO_VARCHAR(contact_number)) AS NEW_CONTACT_NUMBER 
+from pd2023_wk07_account_holders
+)
+SELECT accounts.*,
+date_of_birth,first_line_of_address,name,NEW_CONTACT_NUMBER,transactions.transaction_id,transaction_date,value
+FROM accounts
+inner join holders on accounts.account_holder_id=holders.account_holder_id
+INNER JOIN transactions on transactions."ACCOUNT FROM" = accounts."ACCOUNT_NUMBER"
+inner join pd2023_wk07_transaction_detail on transactions.transaction_id=pd2023_wk07_transaction_detail.transaction_id
+WHERE CANCELLED_='N' AND VALUE>1000 AND ACCOUNT_TYPE<>'Platinum' ;
+
+--Week 8 
+with unioned as 
+(select *, 
+1 as "MONTH"
+from pd2023_wk08_01
+
+union all 
+
+select *, 2 as "MONTH"
+from pd2023_wk08_02
+
+union all
+
+select *, 3 as "MONTH"
+from pd2023_wk08_03
+
+union all
+
+select *, 4 as "MONTH"
+from pd2023_wk08_04
+
+union all
+
+select *, 5 as "MONTH"
+from pd2023_wk08_05
+
+union all
+
+select *, 6 as "MONTH"
+from pd2023_wk08_06
+
+union all
+
+select *, 7 as "MONTH"
+from pd2023_wk08_07
+
+union all
+
+select *, 8 as "MONTH"
+from pd2023_wk08_08
+
+union all
+
+select *, 9 as "MONTH"
+from pd2023_wk08_09
+
+union all
+
+select *, 10 as "MONTH"
+from pd2023_wk08_10
+
+union all
+
+select *, 11 as "MONTH"
+from pd2023_wk08_11
+
+union all
+
+select *, 12 as "MONTH"
+from pd2023_wk08_12),
+
+CTE as(select 
+date_from_parts(2023,"MONTH",1) as FILE_DATE
+,ID
+, FIRST_NAME
+, LAST_NAME
+, TICKER
+, SECTOR
+, MARKET
+, STOCK_NAME
+, MARKET_CAP
+, PURCHASE_PRICE,
+case 
+    when cast(replace(purchase_price,'$','') as decimal) >= 75000 then 'Very High'
+    when cast(replace(purchase_price,'$','') as decimal) >= 50000 then 'High'
+    when cast(replace(purchase_price,'$','') as decimal) >= 25000  then 'Medium'
+    else 'Low'
+    end as PURCHASE_CAT,
+CASE 
+    WHEN MARKET_CAP like '%B' then (cast(REPLACE(replace(replace(market_cap,'$',''),'M',''),'B','') as decimal(10,2)))*1000
+    else cast(REPLACE(replace(replace(market_cap,'$',''),'M',''),'B','') as decimal(10,2)
+)
+    end millions
+from unioned
+where market_cap <>'n/a'),
+
+CATEGORY AS(
+SELECT CTE.*,
+CASE 
+    WHEN MILLIONS < 100 THEN 'Small'
+    when millions < 1000 then 'Medium'
+    when millions <100000 then 'Large'
+    else 'Huge'
+    end as Market_Cat 
+FROM CTE),
+
+RANKINGCTE AS(
+Select 
+Category.*,
+MARKET_CAT,
+PURCHASE_CAT,
+FILE_DATE,
+RANK()OVER(PARTITION BY MARKET_CAT,PURCHASE_CAT,FILE_DATE ORDER BY PURCHASE_PRICE DESC ) AS RANKED
+FROM Category)
+
+select * from RANKINGCTE where RANKED<=5;
+
