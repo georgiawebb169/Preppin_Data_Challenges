@@ -1,0 +1,242 @@
+//Week 1 
+
+with start_year as( 
+select *,
+CASE 
+    WHEN CURRENT_DATE >= DATE_FROM_PARTS(YEAR(CURRENT_DATE), 9, 2)
+    THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE), 9, 2)
+    ELSE DATE_FROM_PARTS(YEAR(CURRENT_DATE) - 1, 9, 2)
+  END AS academic_year_start
+  from pd2022_wk01)
+  
+SELECT 
+  CONCAT("pupil last name", ', ', "pupil first name") AS pupils_name,
+
+  CASE 
+    WHEN "Parental Contact" = 1 THEN CONCAT("pupil last name", ', ', "Parental Contact Name_1")
+    ELSE CONCAT("pupil last name", ', ', "Parental Contact Name_2")
+  END AS parental_contact_name,
+
+  
+  CONCAT(
+    CASE
+      WHEN "Parental Contact" = 1 THEN "Parental Contact Name_1"
+      ELSE "Parental Contact Name_2"
+    END,
+    '.', "pupil last name", '@Employer.com'
+  ) AS parental_email_address,
+
+  
+  CONCAT(
+    'Year ',
+    TO_VARCHAR(
+      DATEDIFF(
+        year,
+        DATE_FROM_PARTS(2014, 9, 2),
+        CASE 
+          WHEN CURRENT_DATE >= DATE_FROM_PARTS(YEAR(CURRENT_DATE), 9, 2)
+          THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE), 9, 2)
+          ELSE DATE_FROM_PARTS(YEAR(CURRENT_DATE) - 1, 9, 2)
+        END
+      ) - DATEDIFF(
+        year,
+        DATE_FROM_PARTS(2014, 9, 2),
+        "Date of Birth"
+      ) + 1
+    )
+  ) AS school_year_label
+
+FROM start_year;
+
+
+//Week 2 
+with CTE as(
+select 
+    "gender", 
+    "Date of Birth",
+    concat("pupil first name",' ' , "pupil last name") as pupil_name,
+    date_from_parts(2022,month("Date of Birth"), day("Date of Birth")) as birthday,
+    dayname(birthday) as og_day,
+        case 
+        when dayname(birthday) = 'Sat' then 'Fri'
+        when dayname(birthday) = 'Sun' then 'Fri' 
+        else dayname(birthday) end as "corrected_Day"
+from pd2022_wk01),
+
+CTE2 as(select *,
+case 
+when dayname(birthday) ='Sat'
+THEN DATEADD(day, -1, birthday)
+when dayname(birthday) = 'Sun' then dateadd(day,-2, birthday)
+else birthday
+end as new_date
+from CTE) ,
+
+CTE3 as (SELECT *
+,monthname(date_from_parts(2022,month(new_date),day(birthday)) )as "Month"
+
+FROM CTE2),
+
+CTE4 as (select "corrected_Day","Month",
+COUNT (*) AS BDs_per_weekday_and_month
+FROM CTE3
+GROUP BY
+  "Month",
+  "corrected_Day"
+ORDER BY
+  "Month",
+  "corrected_Day")
+
+  
+  select pupil_name
+  , "Date of Birth"
+  , CTE3."corrected_Day" as "Cake Needed On"
+  , birthday as "This Year's Birthday"
+  ,CTE3."Month"
+  ,BDs_per_weekday_and_month
+  from CTE3 
+  join CTE4 ON 
+  CTE3."Month" = CTE4."Month" AND CTE3."corrected_Day" = CTE4."corrected_Day"
+  ;
+
+  //Week 3
+
+  WITH CTE AS (
+  SELECT 
+    "id",
+    "pupil first name",
+    "pupil last name",
+    "gender",
+    "Date of Birth",
+    "Student ID",
+    "Maths",
+    "English",
+    "Spanish",
+    "Science",
+    "Art",
+    "History",
+    "Geography"
+  FROM pd2022_wk03 a
+  JOIN pd2022_wk01 b ON b."id" = a."Student ID"
+),
+
+CTE2 AS (
+  SELECT * 
+  FROM CTE
+  UNPIVOT (Score FOR Subject IN (
+    "Maths", "English", "Spanish", "Science", "Art", "History", "Geography"
+  ))
+),
+
+CTE3 AS (
+  SELECT 
+    "id",
+    ROUND(AVG(Score), 1) AS avg_score
+  FROM CTE2
+  GROUP BY "id"
+),
+
+CTE4 AS (
+  SELECT *,
+    CASE 
+      WHEN Score > 74 THEN 'Pass' 
+      ELSE 'Fail' 
+    END AS "Passmark"
+  FROM CTE2
+),
+
+CTE5 AS (
+  SELECT 
+    "id",
+    SUM(CASE WHEN "Passmark" = 'Pass' THEN 1 ELSE 0 END) AS number_of_passes
+  FROM CTE4
+  GROUP BY "id"
+),
+
+CTE6 AS (
+  SELECT DISTINCT "id", "gender"
+  FROM CTE
+)
+
+SELECT 
+  CTE5.number_of_passes,
+  CTE3.avg_score,
+  CTE5."id",
+  CTE6."gender"
+FROM CTE5
+JOIN CTE3 ON CTE3."id" = CTE5."id"
+JOIN CTE6 ON CTE6."id" = CTE5."id";
+
+select * from pd2022_wk01;
+
+//Week 4
+with CTE as (
+    select 
+        "id",
+        M,
+        "Tu",
+        W, 
+        "Th",
+        F, 
+        "pupil first name", 
+        "pupil last name"
+    from pd2022_wk04 a
+    join pd2022_wk01 b on a."Student ID"=b."id"),
+
+CTE2 as(
+    select *
+    from CTE
+    unpivot(Method for Weekday in ( M,"Tu",W,"Th",F)
+    )
+),
+
+CTE3 as(
+    select * ,
+    case
+    when Method ILIKE 'C%' then 'Car'
+    when Method ILIKE 'B%' then 'Bicycle'
+    when Method ILIKE 'W%' then 'Walk'
+    when Method ilike 'S%' then 'Scooter'
+    when Method ilike 'a%' then 'Aeroplane'
+    when Method ilike 'He%' then 'Helicopter'
+    else Method
+    end as correct_spelling,
+
+    case 
+    when correct_spelling = 'Walk' then 'Sustainable'
+    when correct_spelling = 'Bicycle' then 'Sustainable' 
+    when correct_spelling = 'Scooter' then 'Sustainable' 
+    when correct_spelling = 'Hopped' then 'Sustainable'
+    when correct_spelling =  'Jumped' then 'Sustainable'
+    when correct_spelling ='%Shoulders%' then 'Sustainable'
+    
+else 'Non-sustainable' 
+end as type
+from CTE2),
+
+CTE4 as (
+select 
+COUNT("id") as number_of_travellers,
+correct_spelling,
+weekday
+from CTE3
+group by correct_spelling, weekday),
+
+CTE5 as (
+select 
+count("id") as trips_per_day,
+Weekday 
+from CTE3
+group by Weekday)
+
+SELECT 
+  CTE5.Weekday, 
+  CTE4.correct_spelling as travel_method, 
+  trips_per_day,
+  number_of_travellers, 
+  round((number_of_travellers/trips_per_day)*100,1) as "% of trips per day",
+  CTE3.type,
+  
+FROM CTE4
+JOIN CTE5 ON CTE4.Weekday = CTE5.Weekday
+join CTE3 ON CTE3.Weekday = CTE4.Weekday;
