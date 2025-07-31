@@ -1,0 +1,177 @@
+//Week 1 
+SELECT 
+  order_id, 
+  customer_age,
+  bike_value,
+  existing_customer,
+  quarter(date) as quarter,
+  dayofmonth(date)as day_of_month,
+  split_part(store_bike, '-', 1) AS store,
+  CASE
+    WHEN split_part(store_bike, '-', 2) ILIKE '%m%' THEN 'Mountain'
+    WHEN split_part(store_bike, '-', 2) ILIKE '%r%' THEN 'Road'
+    WHEN split_part(store_bike, '-', 2) ILIKE '%g%' THEN 'Gravel'
+    ELSE 'Unknown'
+  END AS bike
+FROM pd2021_wk01
+where order_id>10;
+
+//Week 2
+
+select 
+REGEXP_REPLACE(model, '[^A-Za-z]', '') AS brand,
+bike_type,
+sum(quantity) as quantity_sold,
+sum(value_per_bike*quantity) as order_value,
+(order_value/quantity_sold)as avg_bike_value_sold_by_brand_and_type
+from pd2021_wk02_bike_sales
+group by bike_type, brand;
+
+select store, 
+REGEXP_REPLACE(model, '[^A-Za-z]', '') AS brand,
+sum(quantity) as total_quantity_sold,
+avg(datediff('day',to_date(order_date,'DD/MM/YYYY'),TO_DATE(shipping_date,'DD/MM/YYYY'))) as avg_days_to_ship,
+SUM(VALUE_PER_BIKE*QUANTITY) as total_value
+from pd2021_wk02_bike_sales
+group by store,brand;
+
+//Week 3 Part 1 
+with unioned as (select *,
+'Birmingham' as Location 
+from pd2021_wk03_birmingham
+
+union all 
+
+select *,
+'London' as Location
+from pd2021_wk03_london
+
+union all
+
+select *,
+'Leeds' as Location
+from pd2021_wk03_leeds
+
+union all
+
+select *,
+'York' as Location
+from pd2021_wk03_york
+
+union all
+
+select *,
+'Manchester' as Location 
+from pd2021_wk03_manchester),
+
+post_pivot as(
+select * from unioned
+unpivot (
+products_sold for product in(
+"New_-_Saddles","New_-_Mudguards","New_-_Wheels","New_-_Bags","Existing_-_Saddles","Existing_-_Mudguards","Existing_-_Wheels","Existing_-_Bags")))
+
+select 
+ quarter("Date") as quarter, 
+ split_part(product,'_-_',2) as product,
+ sum(products_sold) as total_products_sold
+from post_pivot
+group by quarter,SPLIT_PART(product, '_-_', 2)
+order by quarter;
+
+//Week 3 Part 2
+
+with unioned as (select *,
+'Birmingham' as Location 
+from pd2021_wk03_birmingham
+
+union all 
+
+select *,
+'London' as Location
+from pd2021_wk03_london
+
+union all
+
+select *,
+'Leeds' as Location
+from pd2021_wk03_leeds
+
+union all
+
+select *,
+'York' as Location
+from pd2021_wk03_york
+
+union all
+
+select *,
+'Manchester' as Location 
+from pd2021_wk03_manchester),
+
+post_pivot as(
+select * from unioned
+unpivot (
+products_sold for product in(
+"New_-_Saddles","New_-_Mudguards","New_-_Wheels","New_-_Bags","Existing_-_Saddles","Existing_-_Mudguards","Existing_-_Wheels","Existing_-_Bags")))
+
+select sum(products_sold) as total_products_sold,
+split_part(product,'_-_',2) as product,
+location,
+split_part(product,'_-_', 1) as customer_type
+from post_pivot
+group by location, customer_type, product;
+
+//Week 4 
+with unioned as (
+select * ,
+'Birmingham' as Store
+from pd2021_wk03_birmingham
+
+union all 
+
+select * ,
+'Manchester' as Store
+from pd2021_wk03_manchester
+
+union all 
+
+select * ,
+'London' as Store
+from pd2021_wk03_london
+
+union all 
+
+select * ,
+'York' as Store
+from pd2021_wk03_York
+
+union all 
+
+select * ,
+'Leeds' as Store
+from pd2021_wk03_leeds), 
+
+pivoted as( 
+select * 
+from unioned
+unpivot (
+    "Products Sold" for product in
+       (
+        "New_-_Saddles","New_-_Mudguards", "New_-_Wheels", "New_-_Bags","Existing_-_Saddles","Existing_-_Mudguards", "Existing_-_Wheels", "Existing_-_Bags"
+        )
+    )
+)
+
+select 
+    quarter("Date") as quarter,
+    Store,
+    sum("Products Sold") as "Total Products Sold",
+    t."Target",
+    "Total Products Sold" - t."Target"  as "Variance To Target",
+    RANK() OVER (PARTITION BY quarter("Date")
+    ORDER BY "Total Products Sold" - t."Target" DESC) as "Rank"
+from pivoted p
+inner join pd2021_wk04_targets t 
+    ON quarter("Date") = t."Quarter" and store=t."Store"
+GROUP BY 
+    Store, quarter, "Target" ;
